@@ -4,8 +4,15 @@ import '../models/product.dart';
 
 class ProductProvider extends ChangeNotifier {
   List<Product> _products = [];
-
   List<Product> get products => _products;
+
+  ThemeMode _themeMode = ThemeMode.light;
+  ThemeMode get themeMode => _themeMode;
+
+  void setThemeMode(ThemeMode themeMode) {
+    _themeMode = themeMode;
+    notifyListeners();
+  }
 
   Future<void> loadProducts() async {
     final databaseHelper = DatabaseHelper();

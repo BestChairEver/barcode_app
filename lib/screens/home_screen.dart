@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/product.dart';
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import '../models/product.dart';
 import '../utils/product_provider.dart';
 import 'calender.dart';
 import 'product_page.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -29,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           CalendarPage(),
+          SettingsScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -48,6 +50,10 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.calendar_today),
             label: 'Календарь',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Настройки',
+          ),
         ],
       ),
       floatingActionButton: Column(
@@ -62,12 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SizedBox(height: 10),
           FloatingActionButton(
             onPressed: () async {
-              var result = await BarcodeScanner.scan();
-              if (result.rawContent.isNotEmpty) {
-                await fetchProductData(result.rawContent);
-              } else {
-                _showErrorMessage('Неудачное сканирование.');
-              }
+              await _scanBarcode();
             },
             child: Icon(Icons.camera),
           ),
@@ -76,7 +77,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-   Future<void> _addProductManually() async {
+  Future<void> _scanBarcode() async {
+    var result = await BarcodeScanner.scan();
+    if (result.rawContent.isNotEmpty) {
+      await fetchProductData(result.rawContent);
+    } else {
+      _showErrorMessage('Неудачное сканирование.');
+    }
+  }
+
+  Future<void> _addProductManually() async {
     final productNameController = TextEditingController();
     DateTime? expiryDate;
 
@@ -130,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (productName.isNotEmpty) {
                   final newProduct = Product(
                     name: productName,
-                    expiryDate: expiryDate ?? DateTime.now(), // используем оператор ??
+                    expiryDate: expiryDate ?? DateTime.now(),
                     imageUrl: '',
                   );
                   final productProvider = Provider.of<ProductProvider>(context, listen: false);
