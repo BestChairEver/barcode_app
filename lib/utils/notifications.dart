@@ -1,77 +1,106 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-import '../models/product.dart';
-import '../db/database_helper.dart';
+import 'dart:math';
 
-FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+final random = Random();
+final notificationId = random.nextInt(100000);
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 Future<void> initializeNotifications() async {
   const AndroidInitializationSettings initializationSettingsAndroid =
-    AndroidInitializationSettings('app_icon');
-  final InitializationSettings initializationSettings = InitializationSettings(
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+
+  const InitializationSettings initializationSettings = InitializationSettings(
     android: initializationSettingsAndroid,
   );
+
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'expiry_channel',
+    'Продукты с истекающим сроком', 
+    description: 'Напоминания о продуктах с истекающим сроком годности',
+    importance: Importance.high, 
+    playSound: true, 
+  );
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  print("Уведомления инициализированы.");
+
   tz.initializeTimeZones();
+  final String timeZoneName = tz.local.name;
+  tz.setLocalLocation(tz.getLocation('Europe/Moscow'));
+  print("Таймзона настроена: $timeZoneName");
 }
 
-Future<void> scheduleExpiryNotifications() async {
-  final databaseHelper = DatabaseHelper();
-  final products = await databaseHelper.getProducts();
-  DateTime today = DateTime.now();
-  DateTime tomorrow = today.add(Duration(days: 1));
-  List<Product> expiringToday = products.where((product) {
-    return product.expiryDate.year == today.year &&
-        product.expiryDate.month == today.month &&
-        product.expiryDate.day == today.day;
-  }).toList();
+Future<void> scheduleNotificationForProduct(
+  String productName, 
+  DateTime expiryDate,
+) async {
+  print("Планирование уведомления для продукта: $productName");
 
-  List<Product> expiringTomorrow = products.where((product) {
-    return product.expiryDate.year == tomorrow.year &&
-        product.expiryDate.month == tomorrow.month &&
-        product.expiryDate.day == tomorrow.day;
-  }).toList();
+  final now = DateTime.now();
+  final expiryDateWithoutTime = DateTime(expiryDate.year, expiryDate.month, expiryDate.day);
+  print("Текущее время: $now");
+  print("Дата истечения срока годности (без времени): $expiryDateWithoutTime");
 
-  if (expiringToday.isNotEmpty) {
-    await _scheduleNotification(
-      'Срок годности сегодня',
-      'У ${expiringToday.length} продукта(ов) сегодня истекает срок годности',
-      DateTime(today.year, today.month, today.day, 8),
-    );
+  if (expiryDate.isBefore(now)) {
+    print("Пропущено: срок годности продукта '$productName' уже истек.");
+    return;
   }
 
-  if (expiringTomorrow.isNotEmpty) {
-    await _scheduleNotification(
-      'Срок годности завтра',
-      'У ${expiringTomorrow.length} продукта(ов) завтра истекает срок годности',
-      DateTime(today.year, today.month, today.day, 8),
-    );
+  final prefs = await SharedPreferences.getInstance();
+  final notificationHour = prefs.getInt('notificationTimeHour') ?? 8;
+  final notificationMinute = prefs.getInt('notificationTimeMinute') ?? 0;
+
+  final notificationTime = DateTime(
+    expiryDateWithoutTime.year,
+    expiryDateWithoutTime.month,
+    expiryDateWithoutTime.day,
+    notificationHour,
+    notificationMinute,
+  );
+
+  if (notificationTime.isBefore(now)) {
+    print("Пропущено: уведомление для продукта '$productName' уже не актуально.");
+    return;
   }
-}
 
+  final tz.TZDateTime scheduleTime = tz.TZDateTime.from(notificationTime, tz.local);
+  print("Запланированное время уведомления: $scheduleTime");
 
-Future<void> _scheduleNotification(String title, String message, DateTime date) async {
-  var scheduledNotificationDateTime = tz.TZDateTime.from(date, tz.local);
-  var androidDetails = AndroidNotificationDetails(
-    'channelId',
-    'channelName',
-    importance: Importance.high,
-    priority: Priority.high,
+  const NotificationDetails notificationDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'expiry_channel',
+      'Продукты с истекающим сроком',
+      channelDescription: 'Напоминания о продуктах с истекающим сроком годности',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
   );
-  var platformDetails = NotificationDetails(android: androidDetails);
 
-  await flutterLocalNotificationsPlugin.zonedSchedule(
-    0,
-    title,
-    message,
-    scheduledNotificationDateTime,
-    platformDetails,
-    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.wallClockTime,
-    matchDateTimeComponents: DateTimeComponents.time,
-  );
-}
-Future<void> checkExpiringProducts() async {
-  await scheduleExpiryNotifications();
+  try {
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+      random.nextInt(100000),
+      'Продукт скоро испортится!',
+      'Проверьте продукт: $productName',
+      scheduleTime,
+      notificationDetails,
+      androidAllowWhileIdle: true,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
+    print("Уведомление для продукта '$productName' успешно запланировано.");
+  } catch (e) {
+    print("Ошибка при планировании уведомления: $e");
+  }
 }

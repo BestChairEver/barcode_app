@@ -33,15 +33,31 @@ class DatabaseHelper {
 
   Future<List<Product>> getProducts() async {
     final db = await database;
-    final products = await db.query('products');
-    return products.map((product) => Product.fromJson(product)).toList();
+    final List<Map<String, dynamic>> products = await db.query('products');
+
+    return products.map((product) {
+      final expiryDate = DateTime.parse(product['expiryDate']);
+      return Product(
+        id: product['id'],
+        name: product['name'],
+        expiryDate: expiryDate,
+        imageUrl: product['imageUrl'],
+      );
+    }).toList();
   }
 
   Future<int> insertProduct(Product product) async {
-  final db = await database;
-  final id = await db.insert('products', product.toJson());
-  return id;
-}
+    final db = await database;
+
+    final productMap = product.toJson();
+    productMap['expiryDate'] = product.expiryDate.toIso8601String(); 
+
+    final id = await db.insert('products', productMap);
+
+    await product.scheduleNotification(); 
+
+    return id;
+  }
 
   Future<void> deleteProduct(int id) async {
     final db = await database;

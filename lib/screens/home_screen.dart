@@ -6,7 +6,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../utils/product_provider.dart';
+import '../utils/notifications.dart';
 import 'calender.dart';
+import 'settings_screen.dart';
 import 'product_page.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -16,12 +18,18 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController();
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: PageView(
         controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
         children: [
           Consumer<ProductProvider>(
             builder: (context, productProvider, child) {
@@ -29,10 +37,15 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           CalendarPage(),
+          SettingsScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
         onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
           _pageController.animateToPage(
             index,
             duration: Duration(milliseconds: 300),
@@ -47,6 +60,10 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
             label: 'Календарь',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Настройки',
           ),
         ],
       ),
@@ -76,78 +93,92 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-   Future<void> _addProductManually() async {
-    final productNameController = TextEditingController();
-    DateTime? expiryDate;
+Future<void> _addProductManually() async {
+  final productNameController = TextEditingController();
+  DateTime? expiryDate;
 
-    await showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Добавить продукт вручную'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              TextField(
-                controller: productNameController,
-                decoration: InputDecoration(labelText: 'Название продукта'),
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                child: Text('Выбрать срок годности'),
-                onPressed: () async {
-                  final DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime(2101),
-                    locale: const Locale("ru", "RU"),
-                  );
-                  if (picked != null) {
-                    setState(() {
-                      expiryDate = picked;
-                    });
-                  }
+  await showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('Добавить продукт вручную'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                TextField(
+                  controller: productNameController,
+                  decoration: InputDecoration(labelText: 'Название продукта'),
+                ),
+                SizedBox(height: 20),
+                ElevatedButton(
+                  child: Text('Выбрать срок годности'),
+                  onPressed: () async {
+                    final DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime(2101),
+                      locale: const Locale("ru", "RU"),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        expiryDate = picked;
+                      });
+                    }
+                  },
+                ),
+                expiryDate != null
+                    ? Text('Выбранная дата: ${DateFormat('dd.MM.yy').format(expiryDate!)}')
+                    : Text('Срок годности не выбран', style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: Text('Отмена'),
+                onPressed: () {
+                  Navigator.of(context).pop();
                 },
               ),
-              expiryDate != null
-                  ? Text('Выбранная дата: ${DateFormat('dd.MM.yy').format(expiryDate!)}')
-                  : Text(''),
+              TextButton(
+                child: Text('Добавить'),
+                onPressed: expiryDate != null
+                    ? () async {
+                        final productName = productNameController.text;
+
+                        if (productName.isNotEmpty && expiryDate != null) {
+                          final newProduct = Product(
+                            name: productName,
+                            expiryDate: expiryDate!,
+                            imageUrl: '',
+                          );
+                          final productProvider = Provider.of<ProductProvider>(context, listen: false);
+                          await productProvider.addProduct(newProduct);
+
+                          final notificationOffset = productProvider.notificationOffset;
+
+                          await scheduleNotificationForProduct(
+                              productName, expiryDate!);
+
+                          await productProvider.loadProducts();
+                          Navigator.of(context).pop();
+                        } else {
+                          _showErrorMessage('Введите все поля');
+                        }
+                      }
+                    : null, 
+                style: TextButton.styleFrom(
+                  foregroundColor: expiryDate != null ? null : Colors.grey,
+                ),
+              ),
             ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Отмена'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text('Добавить'),
-              onPressed: () async {
-                final productName = productNameController.text;
-
-                if (productName.isNotEmpty) {
-                  final newProduct = Product(
-                    name: productName,
-                    expiryDate: expiryDate ?? DateTime.now(), // используем оператор ??
-                    imageUrl: '',
-                  );
-                  final productProvider = Provider.of<ProductProvider>(context, listen: false);
-                  await productProvider.addProduct(newProduct);
-                  await productProvider.loadProducts();
-                  Navigator.of(context).pop();
-                } else {
-                  _showErrorMessage('Введите все поля');
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
+          );
+        },
+      );
+    },
+  );
+}
   Future<void> fetchProductData(String barcode) async {
     final url = 'https://world.openfoodfacts.org/api/v0/product/$barcode.json';
 
@@ -222,6 +253,12 @@ class _HomeScreenState extends State<HomeScreen> {
             );
             final productProvider = Provider.of<ProductProvider>(context, listen: false);
             await productProvider.addProduct(newProduct);
+
+            final notificationOffset = productProvider.notificationOffset;
+
+            await scheduleNotificationForProduct(
+                productName, selectedDate);
+
             await productProvider.loadProducts();
           }
         } else {

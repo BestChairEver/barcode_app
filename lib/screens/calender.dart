@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
-
 import '../utils/product_provider.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -19,15 +18,19 @@ class _CalendarPageState extends State<CalendarPage> {
     final productProvider = Provider.of<ProductProvider>(context);
     DateTime today = DateTime.now();
     Set productsForSelectedDay = {};
+    
     if (_selectedDay != null) {
       productsForSelectedDay.addAll(productProvider.products
           .where((product) => isSameDay(product.expiryDate, _selectedDay!)));
     }
+
     if (_selectedDay == null || isSameDay(_selectedDay!, today)) {
       productsForSelectedDay.addAll(productProvider.products
           .where((product) => isSameDay(product.expiryDate, today)));
     }
+
     List uniqueProductsForSelectedDay = productsForSelectedDay.toList();
+    _scheduleNotificationsForProducts(uniqueProductsForSelectedDay);
 
     return Scaffold(
       appBar: AppBar(
@@ -153,5 +156,11 @@ class _CalendarPageState extends State<CalendarPage> {
         ],
       ),
     );
+  }
+
+  void _scheduleNotificationsForProducts(List products) async {
+    for (var product in products) {
+      await product.scheduleNotification();
+    }
   }
 }
