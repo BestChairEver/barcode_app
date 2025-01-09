@@ -101,7 +101,7 @@ Future<void> _addProductManually() async {
     context: context,
     builder: (BuildContext context) {
       return StatefulBuilder(
-        builder: (context, setState) {
+        builder: (context, setStateDialog) {
           return AlertDialog(
             title: Text('Добавить продукт вручную'),
             content: Column(
@@ -123,7 +123,7 @@ Future<void> _addProductManually() async {
                       locale: const Locale("ru", "RU"),
                     );
                     if (picked != null) {
-                      setState(() {
+                      setStateDialog(() {
                         expiryDate = picked;
                       });
                     }
@@ -162,12 +162,13 @@ Future<void> _addProductManually() async {
                               productName, expiryDate!);
 
                           await productProvider.loadProducts();
+                          setState(() {});
                           Navigator.of(context).pop();
                         } else {
                           _showErrorMessage('Введите все поля');
                         }
                       }
-                    : null, 
+                    : null,
                 style: TextButton.styleFrom(
                   foregroundColor: expiryDate != null ? null : Colors.grey,
                 ),
@@ -179,7 +180,7 @@ Future<void> _addProductManually() async {
     },
   );
 }
-  Future<void> fetchProductData(String barcode) async {
+ Future<void> fetchProductData(String barcode) async {
     final url = 'https://world.openfoodfacts.org/api/v0/product/$barcode.json';
 
     try {
